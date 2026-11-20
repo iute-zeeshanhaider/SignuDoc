@@ -27,3 +27,5 @@ playwright-report/
 # Claude Code
 .claude/
 
+# CocoIndex Code (ccc)
+/.cocoindex_code/

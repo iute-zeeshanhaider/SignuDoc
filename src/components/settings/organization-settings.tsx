@@ -516,6 +516,11 @@ function EmailSetupPanel() {
     status !== null &&
     status.state !== "missing_key" &&
     status.state !== "capture";
+  const mailpitUrl =
+    status?.state === "smtp" &&
+    ["127.0.0.1", "localhost", "::1", "[::1]"].includes(status.host)
+      ? "http://localhost:8025"
+      : null;
 
   return (
     <div className="space-y-5 border-t border-(--border) pt-8" id="email-setup">
@@ -615,6 +620,11 @@ function EmailSetupPanel() {
             Open Resend
           </ShellButton>
         ) : null}
+        {mailpitUrl ? (
+          <ShellButton href={mailpitUrl} variant="ghost">
+            Open Mailpit
+          </ShellButton>
+        ) : null}
       </div>
 
       {testResult ? (
@@ -650,6 +660,15 @@ function describeEmailStatus(status: EmailStatus): {
         ],
         ready: true,
         title: "Emails are being captured, not sent",
+      };
+    case "smtp":
+      return {
+        lines: [
+          `Emails are being sent through the SMTP server at ${status.host}:${status.port}${status.secure ? " with TLS" : ""}.`,
+          "For local development that is usually Mailpit. Open http://localhost:8025 to read the messages and copy signing links.",
+        ],
+        ready: true,
+        title: "Emails are being sent over SMTP",
       };
     case "missing_key":
       return status.onVercel

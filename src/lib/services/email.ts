@@ -2,11 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { createTransport, type SendMailOptions } from "nodemailer";
 import { Resend } from "resend";
 
 import { getSettings } from "../settings.ts";
 import { type EmailTemplateKind } from "../types/domain.ts";
-import { getEnv, isLocalDeployment, type EnvSource } from "../utils/env.ts";
+import {
+  getEnv,
+  isLocalDeployment,
+  readEnv,
+  type EnvSource,
+} from "../utils/env.ts";
 import { buildEmailAddresses, type EmailAddresses } from "./email-addresses.ts";
 import { CAPTURED_MESSAGE_ID_PREFIX } from "./captured-email.ts";
 import {
@@ -20,9 +26,19 @@ import {
 const EMAIL_ENV_KEYS = ["RESEND_API_KEY"] as const;
 
 const DEFAULT_CAPTURE_DIR = ".data/outbox";
-const DEFAULT_CAPTURE_SENDER_ADDRESS = "dev@signudoc.localhost";
+const DEFAULT_DEV_SENDER_ADDRESS = "dev@signudoc.localhost";
+const DEFAULT_SMTP_HOST = "127.0.0.1";
+const DEFAULT_SMTP_PORT = 1025;
 
-export type EmailDriver = "capture" | "resend";
+export type EmailDriver = "capture" | "resend" | "smtp";
+
+export type SmtpConfig = {
+  host: string;
+  password?: string;
+  port: number;
+  secure: boolean;
+  user?: string;
+};
 
 export type EmailAttachment = {
   content: Uint8Array;
@@ -67,11 +83,23 @@ export type EmailSendOptions = {
   idempotencyKey?: string;
 };
 
+type SmtpSendResult = {
+  accepted?: string[] | string;
+  messageId?: string;
+  rejected?: string[] | string;
+};
+
+export type SmtpTransport = {
+  sendMail(options: SendMailOptions): Promise<SmtpSendResult>;
+};
+
 type CreateEmailServiceOptions = {
   env?: EnvSource;
   /** Replaced in tests, where there is no database to read settings from. */
   resolveAddresses?: () => Promise<EmailAddresses>;
   resendClient?: Resend;
+  /** Replaced in tests, so that no SMTP server is needed. */
+  smtpTransport?: SmtpTransport;
   /** Replaced in tests, so that they do not really wait. */
   wait?: (milliseconds: number) => Promise<void>;
 };
@@ -175,6 +203,37 @@ function buildResendPayload(
   };
 }
 
+function buildSmtpPayload(
+  message: TransactionalEmailMessage,
+  config: EmailAddresses,
+): SendMailOptions {
+  return {
+    ...(message.attachments?.length
+      ? {
+          attachments: message.attachments.map((attachment) => ({
+            content: Buffer.from(attachment.content),
+            contentType: attachment.contentType,
+            filename: attachment.filename,
+          })),
+        }
+      : {}),
+    from: config.senderAddress,
+    html: message.htmlBody,
+    replyTo: message.replyTo ?? config.supportAddress ?? undefined,
+    subject: message.subject,
+    text: message.textBody,
+    to: message.to,
+  };
+}
+
+function toAddressList(value: string[] | string | undefined) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  return typeof value === "string" ? [value] : undefined;
+}
+
 export interface EmailService {
   send(
     message: TransactionalEmailMessage,
@@ -193,13 +252,36 @@ export function resolveEmailDriver(env: EnvSource = process.env): EmailDriver {
     return "resend";
   }
 
-  if (configuredDriver === "capture" || configuredDriver === "resend") {
+  if (
+    configuredDriver === "capture" ||
+    configuredDriver === "resend" ||
+    configuredDriver === "smtp"
+  ) {
     return configuredDriver;
   }
 
   throw new Error(
-    `Unknown EMAIL_DRIVER "${configuredDriver}". Use "resend" or "capture".`,
+    `Unknown EMAIL_DRIVER "${configuredDriver}". Use "resend", "capture" or "smtp".`,
   );
+}
+
+/** Where messages go when the smtp driver is chosen. Mailpit's defaults. */
+export function resolveSmtpConfig(env: EnvSource = process.env): SmtpConfig {
+  const configuredPort = Number(readEnv(env, "SMTP_PORT") ?? DEFAULT_SMTP_PORT);
+  const secureValue = readEnv(env, "SMTP_SECURE")?.toLowerCase();
+
+  return {
+    host: readEnv(env, "SMTP_HOST") ?? DEFAULT_SMTP_HOST,
+    password: readEnv(env, "SMTP_PASSWORD"),
+    port:
+      Number.isInteger(configuredPort) &&
+      configuredPort > 0 &&
+      configuredPort <= 65_535
+        ? configuredPort
+        : DEFAULT_SMTP_PORT,
+    secure: secureValue === "1" || secureValue === "true",
+    user: readEnv(env, "SMTP_USER"),
+  };
 }
 
 /**
@@ -289,14 +371,74 @@ function createCaptureEmailService(
   };
 }
 
+/**
+ * Sends through any SMTP server. In development that is usually Mailpit,
+ * which accepts everything and shows it in its web inbox; in a self-hosted
+ * install it can be the organization's own mail server.
+ */
+function createSmtpEmailService(
+  env: EnvSource,
+  resolveAddresses: () => Promise<EmailAddresses>,
+  smtpTransport?: SmtpTransport,
+): EmailService {
+  const config = resolveSmtpConfig(env);
+
+  if ((config.user === undefined) !== (config.password === undefined)) {
+    throw new ServiceConfigurationError("email", [
+      config.user === undefined ? "SMTP_USER" : "SMTP_PASSWORD",
+    ]);
+  }
+
+  const transport: SmtpTransport =
+    smtpTransport ??
+    createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      ...(config.user && config.password
+        ? { auth: { pass: config.password, user: config.user } }
+        : {}),
+    });
+
+  async function deliver(
+    message: TransactionalEmailMessage,
+  ): Promise<EmailDeliveryResult> {
+    const addresses = await resolveAddresses();
+    const result = await transport.sendMail(
+      buildSmtpPayload(message, addresses),
+    );
+
+    return {
+      accepted: toAddressList(result.accepted) ?? [message.to],
+      messageId:
+        typeof result.messageId === "string" ? result.messageId : undefined,
+      rejected: toAddressList(result.rejected) ?? [],
+    };
+  }
+
+  return {
+    send: (message) => deliver(message),
+    async sendBatch(messages) {
+      const results: EmailDeliveryResult[] = [];
+
+      for (const message of messages) {
+        results.push(await deliver(message));
+      }
+
+      return results;
+    },
+  };
+}
+
 /** The addresses this install sends from, as configured right now. */
 export async function resolveEmailAddresses(
   env: EnvSource = process.env,
 ): Promise<EmailAddresses> {
   const settings = await getSettings(env);
+  const driver = resolveEmailDriver(env);
 
-  return resolveEmailDriver(env) === "capture"
-    ? buildEmailAddresses(settings, DEFAULT_CAPTURE_SENDER_ADDRESS)
+  return driver === "capture" || driver === "smtp"
+    ? buildEmailAddresses(settings, DEFAULT_DEV_SENDER_ADDRESS)
     : buildEmailAddresses(settings);
 }
 
@@ -355,13 +497,20 @@ export function createEmailService({
   env = process.env,
   resolveAddresses = () => resolveEmailAddresses(env),
   resendClient,
+  smtpTransport,
   wait = waitFor,
 }: CreateEmailServiceOptions = {}): EmailService {
-  if (!resendClient && resolveEmailDriver(env) === "capture") {
-    return createCaptureEmailService(env, resolveAddresses);
-  }
+  const driver = resolveEmailDriver(env);
 
   if (!resendClient) {
+    if (driver === "capture") {
+      return createCaptureEmailService(env, resolveAddresses);
+    }
+
+    if (driver === "smtp") {
+      return createSmtpEmailService(env, resolveAddresses, smtpTransport);
+    }
+
     assertServiceConfig("email", EMAIL_ENV_KEYS, env);
   }
 

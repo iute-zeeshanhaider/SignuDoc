@@ -148,6 +148,31 @@ test("the capture driver is reported as such without asking anyone", async () =>
   });
 });
 
+test("the smtp driver reports the server it sends through", async () => {
+  assert.deepEqual(await getEmailStatus({ env: { EMAIL_DRIVER: "smtp" } }), {
+    host: "127.0.0.1",
+    port: 1025,
+    secure: false,
+    state: "smtp",
+  });
+  assert.deepEqual(
+    await getEmailStatus({
+      env: {
+        EMAIL_DRIVER: "smtp",
+        SMTP_HOST: "mailpit",
+        SMTP_PORT: "2525",
+        SMTP_SECURE: "true",
+      },
+    }),
+    {
+      host: "mailpit",
+      port: 2525,
+      secure: true,
+      state: "smtp",
+    },
+  );
+});
+
 test("no Resend key means email is not connected", async () => {
   assert.deepEqual(await getEmailStatus({ env: {}, settings }), {
     onVercel: false,
@@ -557,6 +582,8 @@ test("the administrator is told about email until it has been seen working", () 
     emailNeedsAttention(settings, { EMAIL_DRIVER: "capture" }),
     false,
   );
+  // An SMTP server is already a working delivery path.
+  assert.equal(emailNeedsAttention(settings, { EMAIL_DRIVER: "smtp" }), false);
 });
 
 test("RESEND_REGION picks a known Resend region and ignores anything else", () => {

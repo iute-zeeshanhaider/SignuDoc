@@ -46,6 +46,25 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+To read email in a real inbox instead of the capture files, start the local
+Mailpit mailbox and point the app at it:
+
+```bash
+npm run mail:start
+```
+
+Then set these in `.env` and restart the dev server:
+
+```bash
+EMAIL_DRIVER=smtp
+SMTP_HOST=127.0.0.1
+SMTP_PORT=1025
+```
+
+Open [http://localhost:8025](http://localhost:8025) to read every message
+SignuDoc sends, including signing links. `npm run mail:stop` stops the
+mailbox without losing the messages already in it.
+
 ### 5. Set the site up
 
 The first time you open the app it takes you to `/setup`, where you name the organization, give a support address and create the administrator. [Set the site up](self-hosting.md#set-the-site-up), in the self-hosting guide, explains each choice.
@@ -57,7 +76,7 @@ The first time you open the app it takes you to `/setup`, where you name the org
 - Better Auth
 - Postgres (`pg`)
 - Vercel Blob object storage (local disk in development)
-- Resend for transactional email
+- Resend (or any SMTP server) for transactional email
 - `pdf-lib` and `pdfjs-dist`
 - Tailwind CSS 4 + shadcn/ui
 
@@ -107,6 +126,7 @@ SignuDoc sends transactional email through Resend.
 - Until a sender address is set, mail goes out from `onboarding@resend.dev`, which Resend only delivers to the owner of the Resend account.
 - In hosted mode the support address is also the contact shown on the Terms, Privacy, and Accessibility pages.
 - For local development, `EMAIL_DRIVER=capture` writes each email to `.data/outbox` as a JSON file instead of sending it. Open the newest file to find a verification or signing link. This driver refuses to run in production.
+- `EMAIL_DRIVER=smtp` sends each email to an SMTP server instead. The defaults (`SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`) match Mailpit, started with `npm run mail:start`; read what arrived at [http://localhost:8025](http://localhost:8025). `SMTP_SECURE=true` uses implicit TLS (port 465), and `SMTP_USER` / `SMTP_PASSWORD` add authentication when the server needs it.
 
 ## Upload constraints
 

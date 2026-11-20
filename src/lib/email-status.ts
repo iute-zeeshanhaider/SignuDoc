@@ -6,7 +6,7 @@ import {
   getAddressDomain,
   isResendTestSender,
 } from "./services/email-addresses.ts";
-import { resolveEmailDriver } from "./services/email.ts";
+import { resolveEmailDriver, resolveSmtpConfig } from "./services/email.ts";
 import {
   getSettings,
   markEmailReady,
@@ -38,6 +38,8 @@ export type EmailDnsRecord = {
 export type EmailStatus =
   /** Development: messages are written to disk, not sent. */
   | { state: "capture" }
+  /** Messages are handed to an SMTP server, such as Mailpit locally. */
+  | { state: "smtp"; host: string; port: number; secure: boolean }
   /**
    * No Resend API key, so nothing can be sent. On Vercel the steps to fix it
    * are Vercel's, which the page spells out.
@@ -379,8 +381,25 @@ async function inspectEmail({
   settings,
 }: EmailStatusOptions): Promise<Inspection> {
   const noop = async () => undefined;
+  const driver = resolveEmailDriver(env);
 
-  if (!domainsClient && resolveEmailDriver(env) === "capture") {
+  if (!domainsClient && driver === "smtp") {
+    const smtp = resolveSmtpConfig(env);
+
+    return {
+      client: null,
+      domainId: null,
+      markReady: noop,
+      status: {
+        host: smtp.host,
+        port: smtp.port,
+        secure: smtp.secure,
+        state: "smtp",
+      },
+    };
+  }
+
+  if (!domainsClient && driver === "capture") {
     return {
       client: null,
       domainId: null,
@@ -557,7 +576,9 @@ export function emailNeedsAttention(
   env: EnvSource = process.env,
 ): boolean {
   try {
-    if (resolveEmailDriver(env) === "capture") {
+    const driver = resolveEmailDriver(env);
+
+    if (driver === "capture" || driver === "smtp") {
       return false;
     }
   } catch {

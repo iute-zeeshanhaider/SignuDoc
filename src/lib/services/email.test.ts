@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { SendMailOptions } from "nodemailer";
 import type { Resend } from "resend";
 
 import {
   canSendEmail,
   createEmailService,
   createLazyEmailService,
+  resolveEmailDriver,
   type EmailService,
 } from "./email.ts";
 
@@ -181,5 +183,91 @@ test("signup knows when there is no email provider to send with (issue #95)", ()
       NODE_ENV: "production",
     }),
     false,
+  );
+});
+
+/** An email service whose SMTP transport records the messages it is given. */
+function smtpService() {
+  const sent: SendMailOptions[] = [];
+  const service = createEmailService({
+    env: { EMAIL_DRIVER: "smtp" },
+    resolveAddresses: async () => ({
+      senderAddress: "Example <hello@example.test>",
+      supportAddress: "help@example.test",
+    }),
+    smtpTransport: {
+      async sendMail(options) {
+        sent.push(options);
+
+        return {
+          accepted: [String(options.to)],
+          messageId: `smtp-${String(sent.length)}`,
+        };
+      },
+    },
+  });
+
+  return { sent, service };
+}
+
+test("smtp is a known driver and does not need a Resend key", () => {
+  assert.equal(resolveEmailDriver({ EMAIL_DRIVER: "smtp" }), "smtp");
+  assert.equal(resolveEmailDriver({ EMAIL_DRIVER: "SMTP" }), "smtp");
+  assert.equal(canSendEmail({ EMAIL_DRIVER: "smtp" }), true);
+});
+
+test("the smtp driver hands the message and its attachments to the transport", async () => {
+  const { sent, service } = smtpService();
+
+  const delivery = await service.send({
+    ...MESSAGE,
+    attachments: [
+      {
+        content: new Uint8Array([1, 2, 3]),
+        contentType: "application/pdf",
+        filename: "signed-copy.pdf",
+      },
+    ],
+    htmlBody: "<p>Attached.</p>",
+  });
+
+  assert.equal(delivery.messageId, "smtp-1");
+  assert.equal(sent[0]?.from, "Example <hello@example.test>");
+  assert.equal(sent[0]?.to, "signer@example.test");
+  assert.equal(sent[0]?.replyTo, "help@example.test");
+  assert.equal(sent[0]?.subject, MESSAGE.subject);
+  assert.equal(sent[0]?.text, MESSAGE.textBody);
+  assert.equal(sent[0]?.html, "<p>Attached.</p>");
+
+  const [attachment] = sent[0]?.attachments ?? [];
+  assert.equal(
+    (attachment as { filename?: string } | undefined)?.filename,
+    "signed-copy.pdf",
+  );
+  assert.deepEqual(
+    [
+      ...((attachment as { content?: Buffer } | undefined)?.content ??
+        Buffer.alloc(0)),
+    ],
+    [1, 2, 3],
+  );
+});
+
+test("the smtp driver sends a batch one message at a time", async () => {
+  const { sent, service } = smtpService();
+
+  const deliveries = await service.sendBatch([
+    MESSAGE,
+    { ...MESSAGE, to: "second@example.test" },
+    { ...MESSAGE, to: "third@example.test" },
+  ]);
+
+  assert.deepEqual(
+    sent.map((message) => message.to),
+    ["signer@example.test", "second@example.test", "third@example.test"],
+  );
+  assert.deepEqual(
+    deliveries.map((delivery) => delivery.messageId),
+    ["smtp-1", "smtp-2", "smtp-3"],
   );
 });

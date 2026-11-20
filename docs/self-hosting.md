@@ -127,24 +127,25 @@ The graft only lives in your local clone. The merge itself is a normal commit th
 
 A deployment made with the button needs no environment variables. These are there if you want them, under Settings, Environment Variables in the Vercel project. Deploy again after changing one.
 
-| Variable                                            | What it does                                                                                                                                                                                           |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SETUP_TOKEN`                                       | A secret the setup page asks for. See [Lock down a new install](#lock-down-a-new-install).                                                                                                             |
-| `CRON_SECRET`                                       | Closes the daily cleanup route to everyone but Vercel's own cron call. See [Daily cleanup](#daily-cleanup).                                                                                            |
-| `BOTID`                                             | `1` turns on Vercel BotID for sign-in, sign-up and setup. See [Bot protection](#bot-protection).                                                                                                       |
-| `RESEND_FROM_EMAIL`, `SUPPORT_EMAIL`                | Fix the sender and support addresses from the environment instead of in Settings.                                                                                                                      |
-| `BETTER_AUTH_SECRET`                                | Your own secret for signing sessions. Without it one is derived from the database password, so changing that password signs everyone out.                                                              |
-| `APP_URL`                                           | The site's public address, if it should not be the project's production domain.                                                                                                                        |
-| `HOSTED_MODE`                                       | `1` runs SignuDoc as a public service under its own name. See [Hosted mode](#hosted-mode).                                                                                                             |
-| `RESEND_REGION`                                     | Where Resend sends from when the app adds your domain, for example `eu-west-1`. See [Running in the EU](#running-in-the-eu).                                                                           |
-| `SEAL_P12_BASE64`, `SEAL_P12_PASSWORD`              | Seal finished PDFs with a certificate from a certificate authority instead of the install's own. See [Signed PDFs and the seal](#signed-pdfs-and-the-seal).                                            |
-| `SEAL_TIMESTAMP_URL`                                | An RFC 3161 timestamp server that adds a trusted time to each seal, and long-term validation. See [Long-term validation](#long-term-validation).                                                       |
-| `MAX_SIGNERS_PER_ENVELOPE`                          | The most signers one envelope can have, from 1 to 100. 25 when unset. See [Signing order](signing-order.md).                                                                                           |
-| `EIDEASY_CLIENT_ID`, `EIDEASY_SECRET`               | Let senders ask for advanced or qualified signatures in the signers' own names, through eID Easy. See [Signatures in the signers' own names](#signatures-in-the-signers-own-names-eidas-ades-and-qes). |
-| `CSC_API_URL`, `CSC_CLIENT_ID`, `CSC_CLIENT_SECRET` | The same through a trust service provider's remote signing service (CSC API v2). See [Signatures in the signers' own names](#signatures-in-the-signers-own-names-eidas-ades-and-qes).                  |
-| `BACKUP_BLOB_READ_WRITE_TOKEN`, `BACKUP_KEEP_DAYS`  | A daily backup of the database and files to a second Blob store. See [Backup and restore](backup-and-restore.md).                                                                                      |
-| `AUDIT_LOG`                                         | `off` keeps audit rows out of the function logs. See [Send the audit trail to your SIEM](#send-the-audit-trail-to-your-siem).                                                                          |
-| `SSO_ISSUER`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`  | Sign in through your organization's identity provider (Okta, Entra ID, Google Workspace). `PASSWORD_SIGN_IN=off` then turns passwords off. See [Single sign-on](#single-sign-on).                      |
+| Variable                                            | What it does                                                                                                                                                                                              |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SETUP_TOKEN`                                       | A secret the setup page asks for. See [Lock down a new install](#lock-down-a-new-install).                                                                                                                |
+| `CRON_SECRET`                                       | Closes the daily cleanup route to everyone but Vercel's own cron call. See [Daily cleanup](#daily-cleanup).                                                                                               |
+| `BOTID`                                             | `1` turns on Vercel BotID for sign-in, sign-up and setup. See [Bot protection](#bot-protection).                                                                                                          |
+| `RESEND_FROM_EMAIL`, `SUPPORT_EMAIL`                | Fix the sender and support addresses from the environment instead of in Settings.                                                                                                                         |
+| `EMAIL_DRIVER`, `SMTP_HOST`, `SMTP_PORT`            | Send through an SMTP server instead of Resend: `EMAIL_DRIVER=smtp`, then the server's host and port. `SMTP_SECURE=true` for implicit TLS, and `SMTP_USER` / `SMTP_PASSWORD` when it needs authentication. |
+| `BETTER_AUTH_SECRET`                                | Your own secret for signing sessions. Without it one is derived from the database password, so changing that password signs everyone out.                                                                 |
+| `APP_URL`                                           | The site's public address, if it should not be the project's production domain.                                                                                                                           |
+| `HOSTED_MODE`                                       | `1` runs SignuDoc as a public service under its own name. See [Hosted mode](#hosted-mode).                                                                                                                |
+| `RESEND_REGION`                                     | Where Resend sends from when the app adds your domain, for example `eu-west-1`. See [Running in the EU](#running-in-the-eu).                                                                              |
+| `SEAL_P12_BASE64`, `SEAL_P12_PASSWORD`              | Seal finished PDFs with a certificate from a certificate authority instead of the install's own. See [Signed PDFs and the seal](#signed-pdfs-and-the-seal).                                               |
+| `SEAL_TIMESTAMP_URL`                                | An RFC 3161 timestamp server that adds a trusted time to each seal, and long-term validation. See [Long-term validation](#long-term-validation).                                                          |
+| `MAX_SIGNERS_PER_ENVELOPE`                          | The most signers one envelope can have, from 1 to 100. 25 when unset. See [Signing order](signing-order.md).                                                                                              |
+| `EIDEASY_CLIENT_ID`, `EIDEASY_SECRET`               | Let senders ask for advanced or qualified signatures in the signers' own names, through eID Easy. See [Signatures in the signers' own names](#signatures-in-the-signers-own-names-eidas-ades-and-qes).    |
+| `CSC_API_URL`, `CSC_CLIENT_ID`, `CSC_CLIENT_SECRET` | The same through a trust service provider's remote signing service (CSC API v2). See [Signatures in the signers' own names](#signatures-in-the-signers-own-names-eidas-ades-and-qes).                     |
+| `BACKUP_BLOB_READ_WRITE_TOKEN`, `BACKUP_KEEP_DAYS`  | A daily backup of the database and files to a second Blob store. See [Backup and restore](backup-and-restore.md).                                                                                         |
+| `AUDIT_LOG`                                         | `off` keeps audit rows out of the function logs. See [Send the audit trail to your SIEM](#send-the-audit-trail-to-your-siem).                                                                             |
+| `SSO_ISSUER`, `SSO_CLIENT_ID`, `SSO_CLIENT_SECRET`  | Sign in through your organization's identity provider (Okta, Entra ID, Google Workspace). `PASSWORD_SIGN_IN=off` then turns passwords off. See [Single sign-on](#single-sign-on).                         |
 
 ## Set the site up
 
@@ -353,9 +354,9 @@ Away from Vercel, a few things Vercel does for you are yours to set:
 - `DATABASE_URL`, pointing at your Postgres. Run `npm run db:migrate` on every deploy; it only applies what is new.
 - `APP_URL`, the site's public HTTPS address.
 - `BETTER_AUTH_SECRET`, at least 32 characters (`openssl rand -hex 32`). Without it a secret is derived from the database password, which must then be at least 12 characters long.
-- `RESEND_API_KEY`, from your Resend account.
+- `RESEND_API_KEY`, from your Resend account. Alternatively set `EMAIL_DRIVER=smtp` with `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER` and `SMTP_PASSWORD` to send through your own mail server.
 - Files are kept on the machine's disk under `.data/storage` (`STORAGE_LOCAL_DIR` changes where), so that disk must survive restarts. To use a Vercel Blob store from elsewhere, set `BLOB_READ_WRITE_TOKEN`.
-- Leave `EMAIL_DRIVER` unset. The capture driver is for development only.
+- Leave `EMAIL_DRIVER` unset to send through Resend. `capture` is for development only; use `smtp` to send through your own mail server.
 
 Self-hosted operators are responsible for:
 

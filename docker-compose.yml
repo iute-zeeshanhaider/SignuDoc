@@ -3,21 +3,42 @@
 #   npm run db:stop     stop it (data is kept)
 #   npm run db:reset    wipe it and start fresh
 services:
-  db:
-    image: postgres:17
+  db-dev:
+    image: postgres:18.4
+    container_name: postgres-18-4-docker-singudoc-api
     environment:
-      POSTGRES_USER: signudoc
-      POSTGRES_PASSWORD: signudoc
-      POSTGRES_DB: signudoc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: signudoc_db
     ports:
-      - "127.0.0.1:5432:5432"
+      - "5433:5432"
     volumes:
-      - signudoc-db:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U signudoc -d signudoc"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
+      test: ["CMD-SHELL", "pg_isready -U postgres -d signudoc_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Local mailbox for development. SignuDoc sends SMTP to port 1025;
+  # open http://localhost:8025 to read what arrived.
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    container_name: pci-mailpit-container
+    ports:
+      - "8026:8025"   # web UI
+      - "1026:1025"   # SMTP
+    volumes:
+      - mailpit_data:/data
+    environment:
+      MP_DATABASE: /data/mailpit.db
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 30s
+      start_period: 10s
 
 volumes:
-  signudoc-db:
+  pgdata:
+    driver: local
+  mailpit_data:
+    driver: local

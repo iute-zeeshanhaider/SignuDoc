@@ -31,6 +31,9 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  // Nodemailer opens its own sockets, so it is loaded by Node instead of
+  // being bundled into the server build.
+  serverExternalPackages: ["nodemailer"],
   // Finished PDFs are drawn with fonts read from disk at runtime, cut down
   // by a WebAssembly subsetter (src/lib/services/pdf-fonts.ts). Listing the
   // files here makes sure they are copied into the deployed functions.
